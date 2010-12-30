@@ -25,7 +25,7 @@ define ha::node($autojoin="any", $use_logd="on", $compression="bz2",
 
     case $operatingsystem {
         RedHat,CentOS: {
-            case $operatingsystemrelease {
+            case $lsbmajdistrelease {
                 5: {
                     package {
                         "pacemaker":
