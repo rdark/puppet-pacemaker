@@ -1,4 +1,4 @@
-import "primitive.pp"
+import "crm/*.pp"
 import "stonith.pp"
 import "ip.pp"
 
@@ -82,7 +82,7 @@ define ha::node($autojoin="any", $use_logd="on", $compression="bz2",
             mode   => 0440,
             owner  => "root",
             group  => "root",
-            source => "puppet:///ha/etc/logd.cf";
+            source => "puppet:///modules/ha/etc/logd.cf";
         
         # Augeas lenses
         "/usr/share/augeas/lenses/hacf.aug":
@@ -90,13 +90,13 @@ define ha::node($autojoin="any", $use_logd="on", $compression="bz2",
             mode   => 0444,
             owner  => "root",
             group  => "root",
-            source => "puppet:///ha/usr/share/augeas/lenses/hacf.aug";
+            source => "puppet:///modules/ha/usr/share/augeas/lenses/hacf.aug";
         "/usr/share/augeas/lenses/haauthkeys.aug":
             ensure => present,
             mode   => 0444,
             owner  => "root",
             group  => "root",
-            source => "puppet:///ha/usr/share/augeas/lenses/haauthkeys.aug";
+            source => "puppet:///modules/ha/usr/share/augeas/lenses/haauthkeys.aug";
     }
 
     augeas {
