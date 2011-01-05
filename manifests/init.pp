@@ -1,4 +1,4 @@
-import "crm/*.pp"
+import "crm/primitive.pp"
 import "stonith.pp"
 import "ip.pp"
 
@@ -15,9 +15,9 @@ define ha::authkey($method, $key="") {
     }
 }
 
-define ha::node($autojoin="any", $use_logd="on", $compression="bz2",
+define ha::node($autojoin="any", $nodes=[], $use_logd="on", $compression="bz2",
                 $keepalive="1", $warntime="5", $deadtime="10", $initdead="60", $authkey,
-                $alert_email_address) {
+                $alert_email_address, $logfacility='none', $logfile='/var/log/ha-log', $debugfile='', $debuglevel='0') {
 
     Augeas { context => "/files/etc/ha.d/ha.cf" }
 
@@ -39,13 +39,13 @@ define ha::node($autojoin="any", $use_logd="on", $compression="bz2",
                                 x86_64 => "pacemaker.x86_64",
                                 default => "pacemaker",
                             },
-                            # Can't lock version and specify architecture currently - see bug #2662
-                          #  ensure  => "1.0.10-1.4.el5",
+                            # Can't lock version and specify architecture currently - see bug #2662 - also, don't really want puppet upgrading a live cluster
+                            ensure  => "installed",
                             require => Package["heartbeat"];
                         "heartbeat":
                           # dependency on our yum::centos::five::clusterlabs class here
                             require => Yumrepo["clusterlabs"],
-                            ensure => "3.0.3-2.3.el5";
+                            ensure => "installed";
                     }
                 }
             }
@@ -53,10 +53,10 @@ define ha::node($autojoin="any", $use_logd="on", $compression="bz2",
         Debian,Ubuntu: {
             package {
                 "pacemaker":
-                    ensure  => "1.0.4-1.1anchor",
+                    ensure  => "installed",
                     require => Package["heartbeat"];
                 "heartbeat":
-                    ensure => "2.99.2+sles11r9-1.1anchor";
+                    ensure => "installed";
                 "openais":
                     ensure => purged;
             }
@@ -89,24 +89,38 @@ define ha::node($autojoin="any", $use_logd="on", $compression="bz2",
             ensure => present,
             mode   => 0600;
 
+        # ha.cf, only if it doesn't already exist
+        # augeas will control settings, this just ensures that everything gets
+        # initialized in the right order
+        "/etc/ha.d/ha.cf":
+            ensure   => present,
+            replace  => false,
+            mode     => 0644,
+            owner    => "root",
+            group    => "root",
+            source   => "puppet:///modules/ha/etc/ha.d/ha.cf";
+
         # logd config, it's very simple and can be the same everywhere
+        "/etc/ha.d/ha_logd.cf":
+            ensure   => present,
+            mode     => 0644,
+            owner    => "root",
+            group    => "root",
+            content  => template('ha/ha_logd.cf.erb');
         "/etc/logd.cf":
-            ensure => present,
-            mode   => 0440,
-            owner  => "root",
-            group  => "root",
-            source => "puppet:///modules/ha/etc/logd.cf";
-        
+            ensure   => link,
+            target   => 'ha.d/ha_logd.cf';
+
         # Augeas lenses
         "/usr/share/augeas/lenses/hacf.aug":
             ensure => present,
-            mode   => 0444,
+            mode   => 0644,
             owner  => "root",
             group  => "root",
             source => "puppet:///modules/ha/usr/share/augeas/lenses/hacf.aug";
         "/usr/share/augeas/lenses/haauthkeys.aug":
             ensure => present,
-            mode   => 0444,
+            mode   => 0644,
             owner  => "root",
             group  => "root",
             source => "puppet:///modules/ha/usr/share/augeas/lenses/haauthkeys.aug";
@@ -114,35 +128,53 @@ define ha::node($autojoin="any", $use_logd="on", $compression="bz2",
 
     augeas {
         "Setting /files/etc/ha.d/ha.cf/port":
+            require => File["/etc/ha.d/ha.cf"],
             notify  => Exec["restart-email"],
             changes => "set udpport 694";
         "Setting /files/etc/ha.d/ha.cf/autojoin":
+            require => File["/etc/ha.d/ha.cf"],
             notify  => Exec["restart-email"],
             changes => "set autojoin ${autojoin}";
+        "Setting /files/etc/ha.d/ha.cf/debug":
+            require => File["/etc/ha.d/ha.cf"],
+            notify  => Exec["restart-email"],
+            changes => "set debug ${debuglevel}";
         "Setting /files/etc/ha.d/ha.cf/use_logd":
+            require => File["/etc/ha.d/ha.cf"],
             notify  => Exec["restart-email"],
             changes => "set use_logd ${use_logd}";
         "Setting /files/etc/ha.d/ha.cf/traditional_compression":
+            require => File["/etc/ha.d/ha.cf"],
             notify  => Exec["restart-email"],
             changes => "set traditional_compression off";
         "Setting /files/etc/ha.d/ha.cf/compression":
+            require => File["/etc/ha.d/ha.cf"],
             notify  => Exec["restart-email"],
             changes => "set compression ${compression}";
         "Setting /files/etc/ha.d/ha.cf/keepalive":
+            require => File["/etc/ha.d/ha.cf"],
             notify  => Exec["restart-email"],
             changes => "set keepalive ${keepalive}";
         "Setting /files/etc/ha.d/ha.cf/warntime":
+            require => File["/etc/ha.d/ha.cf"],
             notify  => Exec["restart-email"],
             changes => "set warntime ${warntime}";
         "Setting /files/etc/ha.d/ha.cf/deadtime":
+            require => File["/etc/ha.d/ha.cf"],
             notify  => Exec["restart-email"],
             changes => "set deadtime ${deadtime}";
         "Setting /files/etc/ha.d/ha.cf/initdead":
+            require => File["/etc/ha.d/ha.cf"],
             notify  => Exec["restart-email"],
             changes => "set initdead ${initdead}";
         "Setting /files/etc/ha.d/ha.cf/crm":
+            require => File["/etc/ha.d/ha.cf"],
             notify  => Exec["restart-email"],
-            changes => "set crm yes";
+            changes => "set crm respawn";
+        "Setting /files/etc/ha.d/ha.cf/node":
+            require => File["/etc/ha.d/ha.cf"],
+            notify  => Exec["restart-email"],
+            changes => $joined_nodes ? { '' => "rm node", default => "set node '${joined_nodes}" };
         "Setting /files/etc/ha.d/authkeys/auth":
             context => "/files/etc/ha.d/authkeys",
             changes => "set auth ${authkey}",
@@ -168,9 +200,27 @@ define ha::mcast($group, $port=694, $ttl=1) {
                    ],
         onlyif  => "match mcast/interface[.='${name}'] size == 0",
     }
-    
+
     augeas { "Disable broadcast on ${name}":
         context => "/files/etc/ha.d/ha.cf",
         changes => "rm bcast"
+    }
+}
+
+define ha::ucast($directives) {
+    # This only works if the ucast nodes are at the end of the file
+    # Need a better way to detect if the current setting is already set
+    # but "onlyif" doesn't lend too much support to our cause
+    augeas { "Configure unicast nodes on ${name}":
+        context => "/files/etc/ha.d/ha.cf",
+        changes => ['rm ucast', augeas_array_to_changes('ucast', $directives)],
+    }
+
+    augeas { "Disable broadcast and multicast on ${name}":
+        context => "/files/etc/ha.d/ha.cf",
+        changes => [
+            'rm bcast',
+            'rm mcast',
+        ],
     }
 }
